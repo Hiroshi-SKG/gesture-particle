@@ -1,4 +1,4 @@
-import { accentVertex, fieldVertex, glowFragment, glowVertex, pointFragment } from './particle-shaders.js';
+import { accentVertex, fieldVertex, glowFragment, glowVertex, pointFragment } from './particle-shaders.js?v=particle-palette-1';
 
 const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 const TRAIL_LENGTH = 18;
