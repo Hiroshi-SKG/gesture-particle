@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#08090f">
   <meta name="description" content="手の動きで光の粒子を操るインタラクティブアート。">
   <title>Gesture Particle</title>
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=safari-camera-1">
 </head>
 <body>
   <header class="topbar">
@@ -14,13 +14,13 @@
     <div class="status" id="status" role="status" data-state="idle"><span></span><strong id="status-label">待機中</strong></div>
   </header>
   <main class="stage">
+    <video id="preview" autoplay muted playsinline aria-hidden="true"></video>
     <div id="art" class="art" aria-hidden="true"></div>
     <div class="stage-label"><span aria-hidden="true"></span> PARTICLE FIELD</div>
     <div class="corner top-left" aria-hidden="true"></div>
     <div class="corner top-right" aria-hidden="true"></div>
     <div class="corner bottom-left" aria-hidden="true"></div>
     <div class="corner bottom-right" aria-hidden="true"></div>
-    <video id="camera-feed" autoplay muted playsinline aria-hidden="true"></video>
     <div class="controls">
       <p id="error" role="alert" hidden></p>
       <button id="camera" type="button" disabled>
@@ -35,6 +35,12 @@
     <div class="privacy">カメラ映像は端末内で処理</div>
   </footer>
   <noscript>このアプリを使うには JavaScript を有効にしてください。</noscript>
-  <script type="module" src="./app.js"></script>
+  <script type="module">
+    import('./app.js?v=safari-camera-1').catch(() => {
+      const error = document.querySelector('#error');
+      error.textContent = 'アプリを読み込めませんでした。接続を確認し、ページを再読み込みしてください。';
+      error.hidden = false;
+    });
+  </script>
 </body>
 </html>
