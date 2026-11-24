@@ -17,7 +17,8 @@ h1 span { color: #baa0f3; }
 .status strong { font-weight: inherit; }
 .status span { width: 6px; height: 6px; border-radius: 50%; background: #9c79ed; box-shadow: 0 0 9px #9c79ed; }
 .status[data-state="live"] span { background: #78edeb; box-shadow: 0 0 9px #78edeb; }
-.stage { position: relative; isolation: isolate; overflow: hidden; height: calc(100vh - 138px); height: calc(100svh - 138px); min-height: 475px; border: 1px solid #252238; border-radius: 17px; background: radial-gradient(ellipse at 50% 47%, #18102d 0%, #0c0b18 43%, #080910 80%); }
+.stage { position: relative; isolation: isolate; overflow: hidden; height: calc(100vh - 138px); height: calc(100svh - 138px); min-height: 475px; border: 1px solid #252238; border-radius: 17px; }
+.art { background: radial-gradient(ellipse at 50% 47%, #18102d 0%, #0c0b18 43%, #080910 80%); }
 .art, .art canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .stage-label { font: 600 .75rem ui-monospace, monospace; letter-spacing: .16em; color: #a9a0bf; }
 .stage-label { position: absolute; top: 28px; left: 31px; display: flex; align-items: center; gap: 9px; }
@@ -27,8 +28,8 @@ h1 span { color: #baa0f3; }
 .top-right { top: 12px; right: 12px; border-width: 1px 1px 0 0; }
 .bottom-left { bottom: 12px; left: 12px; border-width: 0 0 1px 1px; }
 .bottom-right { bottom: 12px; right: 12px; border-width: 0 1px 1px 0; }
-/* Keep the inline video in the document for camera frame sampling. */
-#camera-feed { position: absolute; width: 1px; height: 1px; top: 0; left: 0; opacity: 0; pointer-events: none; }
+/* Keep a normal inline video layer inside the viewport, behind the opaque art backdrop. */
+#preview, #camera-feed { position: absolute; top: 0; left: 0; width: 160px; height: 120px; z-index: -1; pointer-events: none; }
 button svg { width: 21px; height: 21px; }
 .controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); text-align: center; width: min(400px, calc(100% - 32px)); }
 button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; padding: 0 23px; color: #fff; background: linear-gradient(110deg, #6442b2, #49319a); border: 1px solid #9f76eb; border-radius: 9px; font: inherit; font-size: .875rem; font-weight: 650; box-shadow: 0 0 25px #7947dc52; cursor: pointer; }

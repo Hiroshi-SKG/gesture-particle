@@ -3,14 +3,14 @@ import { createHandLandmarker, readHand } from './hand.js';
 
 const art = document.querySelector('#art');
 const button = document.querySelector('#camera');
-const video = document.querySelector('#camera-feed');
+const video = document.querySelector('#preview, #camera-feed');
 const status = document.querySelector('#status');
 const statusLabel = document.querySelector('#status-label');
 const errorMessage = document.querySelector('#error');
 
 let stream;
 let detector;
-let detectorPromise;
+let startupTimer;
 let session = 0;
 let cameraState = 'idle';
 let hand = null;
@@ -36,10 +36,13 @@ function setCameraState(state) {
 
 function stopCamera() {
   session++;
+  clearTimeout(startupTimer);
   stream?.getTracks().forEach(track => track.stop());
   stream = undefined;
-  video.pause();
-  video.srcObject = null;
+  if (video) {
+    video.pause();
+    video.srcObject = null;
+  }
   hand = null;
   lastVideoTime = -1;
   lastDetection = -Infinity;
@@ -61,17 +64,33 @@ function cameraError(error) {
   }
 }
 
-function loadDetector() {
-  // Share initialization across sessions if the user stops and restarts during loading.
-  detectorPromise ??= createHandLandmarker().catch(error => {
-    detectorPromise = undefined;
-    throw error;
-  });
-  return detectorPromise;
+function setStartupDeadline(request, delay, message) {
+  clearTimeout(startupTimer);
+  startupTimer = setTimeout(() => {
+    if (request !== session) return;
+    stopCamera();
+    showError(message);
+  }, delay);
+}
+
+async function playCamera(request) {
+  // Set the playback properties before attaching the stream, including on WebKit.
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+  await video.play();
+  while (request === session && video.readyState < 2) {
+    if (video.error) throw video.error;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
 }
 
 async function startCamera() {
   showError('');
+  if (!video) {
+    showError('カメラ画面を準備できませんでした。ページを再読み込みしてください。');
+    return;
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     showError('カメラを利用できません。対応ブラウザで HTTPS または localhost から開いてください。');
     return;
@@ -80,8 +99,9 @@ async function startCamera() {
   const request = ++session;
   setCameraState('loading');
   setStatus('loading', 'カメラ準備中');
-  let phase = 'camera';
+  let failure;
   try {
+    setStartupDeadline(request, 30000, 'カメラの応答がありません。アクセス許可を確認し、もう一度開始してください。');
     const input = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'user' },
@@ -104,20 +124,27 @@ async function startCamera() {
       }, { once: true });
     }
 
-    video.srcObject = stream;
-    await video.play();
+    failure = '映像を再生できませんでした。ブラウザでページを開き直し、もう一度開始してください。';
+    setStartupDeadline(request, 8000, failure);
+    await playCamera(request);
     if (request !== session) return;
+
     setStatus('loading', '認識モデル読み込み中');
-    phase = 'detector';
-    detector = await loadDetector();
-    if (request !== session) return;
+    failure = '手の認識モデルを読み込めませんでした。ネット接続を確認して再試行してください。';
+    setStartupDeadline(request, 30000, failure);
+    const nextDetector = detector ?? await createHandLandmarker();
+    if (request !== session) {
+      if (nextDetector !== detector) nextDetector.close();
+      return;
+    }
+    detector = nextDetector;
+    clearTimeout(startupTimer);
     setCameraState('live');
     setStatus('live', '手を探しています');
   } catch (error) {
     if (request !== session) return;
     stopCamera();
-    showError(phase === 'camera' ? cameraError(error) :
-      '手の認識モデルを読み込めませんでした。ネット接続を確認して再試行してください。');
+    showError(failure ?? cameraError(error));
   }
 }
 
@@ -137,7 +164,6 @@ function updateHand(now) {
     stopCamera();
     detector.close();
     detector = undefined;
-    detectorPromise = undefined;
     showError('手の認識を続けられませんでした。カメラをもう一度開始してください。');
   }
 }
