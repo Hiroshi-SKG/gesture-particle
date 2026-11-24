@@ -21,6 +21,7 @@ export const fieldVertex = /* glsl */ `
   uniform float time, rotation, charge, openness, resolution, gain;
   uniform float burstAge, burstPower;
   uniform vec2 center, viewSize, burstOrigin;
+  uniform vec4 guides[8];
   varying vec3 tint;
   varying float intensity;
   varying vec2 streak;
@@ -33,6 +34,10 @@ export const fieldVertex = /* glsl */ `
     vec3 cyan = vec3(0.17, 0.92, 1.0);
     return mix(mix(violet, blue, smoothstep(0.0, 0.62, hue)),
                cyan, smoothstep(0.43, 1.0, hue));
+  }
+
+  vec2 eddyOffset(float loop, float phase, float seed) {
+    return (0.35 + 0.9 * seed) * vec2(sin(loop * 3.0 + phase), cos(loop * 2.0 + phase));
   }
 
   void main() {
@@ -50,44 +55,76 @@ export const fieldVertex = /* glsl */ `
       intensity = (0.12 + 0.32 * large) * twinkle;
       gl_PointSize = (1.6 + 3.1 * large) * resolution;
     } else {
-      float radius;
-      if (seed.z < 0.65) {
-        // Three spiral arms wrap a tilted vortex with turbulent edges.
-        float arm = floor(seed.y * 3.0) * TAU / 3.0;
-        float scatter = fract(seed.y * 3.0) - 0.5;
-        radius = mix(0.22, 4.8, pow(seed.x, 0.69));
-        float angle = arm + radius * 1.18 + rotation * (1.25 - seed.x * 0.49);
-        angle += scatter * (0.62 + radius * 0.33) + 0.14 * sin(time * 2.1 + phase * 3.0);
-        p = vec3(cos(angle) * radius, sin(angle) * radius,
-                 scatter * (0.6 + radius * 0.2) + sin(angle * 2.0 + time) * 0.33);
-        p.yz = mat2(0.58, 0.815, -0.815, 0.58) * p.yz;
-        float roll = -0.24 + 0.19 * sin(time * 0.65);
-        p.xy = mat2(cos(roll), sin(roll), -sin(roll), cos(roll)) * p.xy;
-      } else {
-        // A rotating volume surrounds the hot core and remains spherical when charged.
-        float z = seed.y * 2.0 - 1.0;
-        float ring = sqrt(max(0.0, 1.0 - z * z));
-        float angle = phase + rotation * (1.05 + 0.48 * z);
-        radius = mix(0.30, 2.4, pow(fract(seed.z * 19.13), 0.48));
-        p = radius * vec3(ring * cos(angle), z, ring * sin(angle));
-        p.y += sin(angle * 2.0 + time) * radius * 0.12;
+      float lane = floor(seed.y * 5.0);
+      float fiber = fract(seed.y * 5.0) - 0.5;
+      // Each lane mixes fast followers and particles that linger on older paths.
+      float lag = min(6.999, 7.0 * clamp(seed.x * 0.75 + lane * 0.050, 0.0, 1.0));
+      int index = int(lag);
+      vec4 flow = mix(guides[index], guides[index + 1], fract(lag));
+      float speed = length(flow.zw);
+      vec2 direction = flow.zw / max(speed, 0.08);
+      vec2 normal = vec2(-direction.y, direction.x);
+      float shear = min(speed * 0.10, 1.5);
+
+      // Particles circulate through curved lanes. Lane phase and width leave moving gaps.
+      float loop = phase + time * (0.39 + 0.105 * lane);
+      float lanePhase = lane * 2.39996 + time * 0.19;
+      float reach = 1.0 + openness * 0.31;
+      float sweep = sin(loop);
+      float ribbon = cos(loop);
+      float flare = (0.55 + 0.45 * sin(loop + 0.66 + lanePhase));
+      float width = 0.13 + 0.73 * flare * flare;
+      float transverse = fiber * width;
+      vec3 openFlow = vec3(
+        (2.92 + lane * 0.21) * sweep + 0.51 * sin(2.0 * loop + lanePhase),
+        (0.74 + lane * 0.10) * sin(2.0 * loop + lanePhase) + 0.79 * ribbon,
+        1.55 * cos(loop + lanePhase) + transverse
+      );
+      openFlow.y += transverse * 1.7;
+      openFlow.x += 0.44 * cos(lanePhase + loop * 2.0);
+      float roll = lanePhase + 0.27 * sin(time * 0.62 + lanePhase);
+      openFlow.xy = mat2(cos(roll), sin(roll), -sin(roll), cos(roll)) * openFlow.xy;
+      if (seed.z > 0.74) {
+        // Loose eddies exchange particles with the denser branches.
+        openFlow.xyz *= 0.48 + 0.65 * seed.w;
+        openFlow.yz += eddyOffset(loop, lanePhase, seed.z);
+      }
+      vec2 turbulence = vec2(
+        sin(openFlow.y * 1.8 + loop * 2.0 + time * 1.4),
+        cos(openFlow.x * 1.7 - loop * 2.0 + time * 1.2)
+      );
+      openFlow.xy = openFlow.xy * reach + turbulence * (0.21 + 0.13 * shear);
+      openFlow.xy += shear * (direction * sweep * 0.72 + normal * ribbon * 0.44);
+
+      // Different response curves curl each streamline into the dense sphere in succession.
+      float squeeze = pow(charge, mix(0.67, 2.2, seed.z));
+      float z = seed.y * 2.0 - 1.0;
+      float ring = sqrt(max(0.0, 1.0 - z * z));
+      float turn = phase + rotation * (0.65 + 0.52 * seed.z) + squeeze * (3.8 + 6.5 * seed.x);
+      float radius = 0.18 + 0.84 * sqrt(fract(seed.z * 31.73));
+      vec3 core = radius * vec3(ring * cos(turn), z, ring * sin(turn));
+      p = mix(openFlow, core, squeeze);
+      float depth = 16.0 / (16.0 - p.z);
+      p.xy = p.xy * depth + mix(flow.xy, center, squeeze * squeeze);
+
+      if (burstPower > 0.0) {
+        // A subset is advected out from the release point before rejoining its lane.
+        float escaped = smoothstep(0.34, 0.83, seed.z);
+        float spread = (1.0 - exp(-burstAge * (3.4 + seed.y * 3.0))) * (2.0 + seed.w * 6.2);
+        vec2 release = vec2(cos(phase + lane), sin(phase + lane));
+        vec2 expelled = burstOrigin + release * spread * burstPower;
+        expelled += vec2(-release.y, release.x) * (0.7 * sin(burstAge * 2.8 + lanePhase));
+        float rejoin = smoothstep(0.0, 0.11, burstAge) * (1.0 - smoothstep(0.23, 1.2, burstAge));
+        p.xy = mix(p.xy, expelled, escaped * rejoin);
+        p.z += (seed.y - 0.5) * rejoin * escaped * 3.0;
       }
 
-      p *= mix(1.0 + openness * 0.19, 0.25, charge);
-      float depth = 16.0 / (16.0 - p.z);
-      p.xy = p.xy * depth + center;
-      if (burstPower > 0.0) {
-        vec2 offset = p.xy - burstOrigin;
-        float distance = length(offset);
-        float front = (0.44 + 6.9 * (1.0 - exp(-burstAge * 3.4))) * burstPower;
-        float impulse = exp(-abs(distance - front) * 1.05 - burstAge * 2.8);
-        p.xy += offset / max(0.18, distance) * impulse * (0.7 + seed.w * 0.8);
-      }
-      tint = palette(clamp(0.51 + 0.43 * sin(phase - radius * 0.72 + rotation * 0.34), 0.0, 1.0));
-      float heat = charge * (0.36 + 0.64 * (1.0 - smoothstep(0.0, 4.4, radius)));
+      tint = palette(clamp(0.51 + 0.43 * sin(loop + lanePhase - transverse), 0.0, 1.0));
+      float heat = squeeze * (0.57 + 0.43 * (1.0 - radius));
       tint = mix(tint, mix(vec3(1.0, 0.61, 0.22), vec3(1.0, 0.97, 0.87), seed.w), heat);
       intensity = (0.13 + 0.44 * seed.w + large * 0.43) * twinkle * gain;
       intensity *= (0.84 + p.z * 0.07) * (1.0 + heat * 0.46);
+      intensity *= mix(0.67 + 0.46 * flare, 1.0, squeeze);
       gl_PointSize = (1.8 + 3.6 * seed.w * seed.w + 5.5 * large) * depth * resolution;
     }
 
@@ -159,7 +196,7 @@ export const glowFragment = /* glsl */ `
     float pulse = 0.91 + 0.09 * sin(time * 3.3);
     float haze = exp(-d * d * 0.20) * (0.17 + 0.10 * charge) * pulse;
     float corona = exp(-d * d * mix(2.0, 4.8, charge)) * (0.27 + 0.49 * charge);
-    float core = exp(-d * d * mix(13.0, 21.0, charge)) * (0.44 + 0.56 * charge);
+    float core = exp(-d * d * mix(13.0, 21.0, charge)) * (0.30 + 0.70 * charge);
     float shell = band(d, 0.68, 0.09) * charge * 0.34;
     float r = length(p - burstOrigin);
     float waveRadius = (0.44 + 6.9 * (1.0 - exp(-burstAge * 3.4))) * burstPower;
