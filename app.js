@@ -1,4 +1,4 @@
-import { createParticleField } from './particles.js';
+import { createParticleField } from './particles.js?v=particle-palette-1';
 import { createHandLandmarker, readHand } from './hand.js';
 
 const art = document.querySelector('#art');
