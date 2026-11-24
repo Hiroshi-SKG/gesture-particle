@@ -3,7 +3,7 @@ import { createHandLandmarker, readHand } from './hand.js';
 
 const art = document.querySelector('#art');
 const button = document.querySelector('#camera');
-const video = document.querySelector('#preview');
+const video = document.querySelector('#camera-feed');
 const status = document.querySelector('#status');
 const statusLabel = document.querySelector('#status-label');
 const errorMessage = document.querySelector('#error');
@@ -31,7 +31,6 @@ function showError(message) {
 
 function setCameraState(state) {
   cameraState = state;
-  video.parentElement.classList.toggle('live', state === 'live');
   button.lastElementChild.textContent = state === 'idle' ? 'カメラを開始' : 'カメラを停止';
 }
 
@@ -108,7 +107,6 @@ async function startCamera() {
     video.srcObject = stream;
     await video.play();
     if (request !== session) return;
-    video.parentElement.classList.add('live');
     setStatus('loading', '認識モデル読み込み中');
     phase = 'detector';
     detector = await loadDetector();
