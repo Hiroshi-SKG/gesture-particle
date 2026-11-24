@@ -2,6 +2,7 @@ import { accentVertex, fieldVertex, glowFragment, glowVertex, pointFragment } fr
 
 const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 const TRAIL_LENGTH = 18;
+const FLOW_GUIDES = 8;
 const TRAIL_STEP = 1 / 30;
 const BURST_LIFETIME = 1.3;
 const MOBILE_QUALITY = [[8500, 0.8], [13000, 1], [20000, 1.35], [27000, 1.55], [34000, 1.75]];
@@ -21,6 +22,21 @@ function createPoints(THREE, count, vertexShader, uniforms) {
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
   return points;
+}
+
+function advanceGuide(guide, x, y, rate, delta) {
+  // Analytic critically damped response keeps the same inertia across frame rates.
+  const offsetX = guide.x - x;
+  const offsetY = guide.y - y;
+  const stepX = (guide.z + rate * offsetX) * delta;
+  const stepY = (guide.w + rate * offsetY) * delta;
+  const decay = Math.exp(-rate * delta);
+  guide.set(
+    x + (offsetX + stepX) * decay,
+    y + (offsetY + stepY) * decay,
+    (guide.z - rate * stepX) * decay,
+    (guide.w - rate * stepY) * decay
+  );
 }
 
 function monitorFrameRate(onChange) {
@@ -70,6 +86,7 @@ export async function createParticleField(container) {
   camera.position.z = 16;
 
   const trail = Array.from({ length: TRAIL_LENGTH }, () => new THREE.Vector4(0, 0, 2, 0));
+  const guides = Array.from({ length: FLOW_GUIDES }, () => new THREE.Vector4(0, 0, 0, 0));
   const uniforms = {
     time: { value: 0 },
     rotation: { value: 0 },
@@ -82,7 +99,8 @@ export async function createParticleField(container) {
     burstAge: { value: BURST_LIFETIME },
     burstPower: { value: 0 },
     burstOrigin: { value: new THREE.Vector2() },
-    trail: { value: trail }
+    trail: { value: trail },
+    guides: { value: guides }
   };
 
   const field = createPoints(THREE, quality[quality.length - 1][0], fieldVertex, uniforms);
@@ -148,6 +166,11 @@ export async function createParticleField(container) {
     const dy = (y - center.y) * ease;
     center.x += dx;
     center.y += dy;
+
+    for (let i = 0; i < guides.length; i++) {
+      const lag = i / (guides.length - 1);
+      advanceGuide(guides[i], x, y, 4.2 + 24 * (1 - lag) ** 2, delta);
+    }
 
     const movement = hand && tracking && delta > 0 ? Math.hypot(dx, dy) / delta : 0;
     const trailStrength = Math.min(1, Math.max(0, (movement - 0.8) / 9));
