@@ -1,3 +1,13 @@
+const particlePalette = /* glsl */ `
+  vec3 palette(float hue, float selector) {
+    // Stable particle seeds mix both families throughout every stream.
+    float warm = step(0.70, selector);
+    vec3 low = mix(vec3(0.15, 0.34, 1.0), vec3(1.0, 0.34, 0.10), warm);
+    vec3 high = mix(vec3(0.20, 0.91, 1.0), vec3(1.0, 0.78, 0.33), warm);
+    return mix(low, high, hue);
+  }
+`;
+
 export const pointFragment = /* glsl */ `
   varying vec3 tint;
   varying float intensity;
@@ -28,13 +38,7 @@ export const fieldVertex = /* glsl */ `
 
   const float TAU = 6.2831853;
 
-  vec3 palette(float hue) {
-    vec3 violet = vec3(0.56, 0.16, 1.0);
-    vec3 blue = vec3(0.18, 0.43, 1.0);
-    vec3 cyan = vec3(0.17, 0.92, 1.0);
-    return mix(mix(violet, blue, smoothstep(0.0, 0.62, hue)),
-               cyan, smoothstep(0.43, 1.0, hue));
-  }
+  ${particlePalette}
 
   vec2 eddyOffset(float loop, float phase, float seed) {
     return (0.35 + 0.9 * seed) * vec2(sin(loop * 3.0 + phase), cos(loop * 2.0 + phase));
@@ -42,6 +46,7 @@ export const fieldVertex = /* glsl */ `
 
   void main() {
     float phase = seed.x * TAU;
+    float paletteSeed = fract(seed.x + seed.w);
     float twinkle = 0.68 + 0.32 * sin(time * (1.7 + seed.y * 5.0) + phase * 5.0);
     float large = pow(seed.w, 14.0);
     vec3 p;
@@ -51,7 +56,7 @@ export const fieldVertex = /* glsl */ `
       // Sparse, drifting points give the energy field a full-screen depth reference.
       p = vec3((seed.xy - 0.5) * viewSize * 1.12, -4.0);
       p.xy += 0.28 * vec2(sin(time * 0.46 + phase), cos(time * 0.43 + seed.y * TAU));
-      tint = palette(seed.w);
+      tint = palette(seed.w, paletteSeed);
       intensity = (0.12 + 0.32 * large) * twinkle;
       gl_PointSize = (1.6 + 3.1 * large) * resolution;
     } else {
@@ -119,7 +124,7 @@ export const fieldVertex = /* glsl */ `
         p.z += (seed.y - 0.5) * rejoin * escaped * 3.0;
       }
 
-      tint = palette(clamp(0.51 + 0.43 * sin(loop + lanePhase - transverse), 0.0, 1.0));
+      tint = palette(0.51 + 0.43 * sin(loop + lanePhase - transverse), paletteSeed);
       float heat = squeeze * (0.57 + 0.43 * (1.0 - radius));
       tint = mix(tint, mix(vec3(1.0, 0.61, 0.22), vec3(1.0, 0.97, 0.87), seed.w), heat);
       intensity = (0.13 + 0.44 * seed.w + large * 0.43) * twinkle * gain;
@@ -141,6 +146,8 @@ export const accentVertex = /* glsl */ `
   varying float intensity;
   varying vec2 streak;
 
+  ${particlePalette}
+
   void main() {
     float angle = seed.x * 6.2831853;
     vec2 direction = vec2(cos(angle), sin(angle));
@@ -152,7 +159,7 @@ export const accentVertex = /* glsl */ `
       float speed = samplePoint.w;
       p = samplePoint.xy + direction * seed.w * (0.28 + age * 0.62);
       p += vec2(sin(time * 3.0 + angle), cos(time * 3.0 + angle)) * age * 0.18;
-      tint = mix(vec3(0.52, 0.20, 1.0), vec3(0.20, 0.88, 1.0), seed.w);
+      tint = palette(seed.w, fract(seed.x + seed.y));
       intensity = speed * exp(-age * 5.5) * (0.22 + 0.61 * seed.w);
       size = (3.0 + 7.0 * pow(seed.w, 4.0)) * (1.0 - 0.5 * min(age, 1.0));
       streak = vec2(0.0);
